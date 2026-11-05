@@ -1,0 +1,61 @@
+{
+ "_comment": "Hashes and offsets only. baseline_sha256: the untouched data track (INDEX 01 onward of Track 02). release_track_sha256: the whole patched Track 02 file. hook_sites: sector of the first copy of the data layout (the second copy is +12288), byte offset in the sector's 2048 user bytes, length changed, SHA-256 prefix of the 16 original bytes there.",
+ "baseline_sha256": "b0117ad34e70b0c9965884e94c7de00302d3aa728697d630e5602617b97d0bb5",
+ "release_track_sha256": "31b5eecea78e23c84dab5ff8beb7860fe299565a1bb273d3831776e724f366c6",
+ "hook_sites": {
+  "block_load": {
+   "sector": 2,
+   "offset": 405,
+   "length": 3,
+   "sha256_16": "1d1189f18fc5"
+  },
+  "row_draw": {
+   "sector": 454,
+   "offset": 1166,
+   "length": 3,
+   "sha256_16": "b70424c53f9a"
+  },
+  "vsync_wait": {
+   "sector": 450,
+   "offset": 615,
+   "length": 3,
+   "sha256_16": "1684a83a6464"
+  },
+  "satb_req": {
+   "sector": 450,
+   "offset": 1157,
+   "length": 3,
+   "sha256_16": "00b994eaf1dc"
+  },
+  "satb_wait": {
+   "sector": 450,
+   "offset": 621,
+   "length": 3,
+   "sha256_16": "52ca42a0621f"
+  },
+  "vram_alloc": {
+   "sector": 2,
+   "offset": 1215,
+   "length": 3,
+   "sha256_16": "506af90870c1"
+  },
+  "ipl_exec": {
+   "sector": 1,
+   "offset": 6,
+   "length": 2,
+   "sha256_16": "f63332a4502e"
+  }
+ },
+ "disc": [
+  {
+   "name": "redmont",
+   "source": "src/redmont.asm",
+   "block": 16,
+   "bank": "7F",
+   "sector": 242,
+   "count": 4,
+   "bank2": "7C",
+   "sector2": 251
+  }
+ ]
+}

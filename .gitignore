@@ -1,0 +1,20 @@
+# Your dump and everything built from it stay out of git.
+.local/
+build/
+dist/
+*.cue
+*.bin
+*.iso
+*.chd
+*.img
+*.pce
+*.wav
+*.ogg
+*.flac
+*.sav
+*.brm
+*.state
+*.xdelta
+*.zip
+*.sym
+__pycache__/
