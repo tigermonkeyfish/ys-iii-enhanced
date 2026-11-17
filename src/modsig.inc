@@ -1,4 +1,4 @@
-; The data proof the module carries: `dgen` from the stub says whether another
+; The data proof each module carries: `dgen`
 ; module ran, a hint; this signature over one page ($200-$2FF) of each of the module's data banks is the proof.
 ; The module's `leave` ends with `jsr sigsave`; its modinit starts with `+sigchk` semantics: A = dgen on entry,
 ;     jsr sigkeep / bcc .keep (carry clear: dgen and the bytes both match, the data stands, return)

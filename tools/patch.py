@@ -3,11 +3,12 @@
 
     python3 tools/patch.py
 
-Writes dist/ys-iii-enhanced-0.1.0.xdelta, a VCDIFF patch (tools/vcdiff.py) from your
+Writes dist/ys-iii-enhanced-0.2.0.xdelta, a VCDIFF patch (tools/vcdiff.py) from your
 Track 02 file (.local/disc.cue) to the one tools/mkdisc.py built (dist/disc/). Its
 added data holds only bytes that differ from your file at their place. It then
 applies the patch with xdelta3 to the same file, compares the result with the build,
-and puts apply.py, README.md, LICENSE and CREDITS.md beside the patch. Needs xdelta3 on the PATH.
+and puts apply.py, README.md, LICENSE, CREDITS.md (and, when present, the
+second-step manifest, edc130.py and pregen/) beside the patch. Needs xdelta3 on the PATH.
 """
 import hashlib
 import json
@@ -32,10 +33,11 @@ def main():
     patched = dist / "disc" / base.name
     if not patched.exists():
         sys.exit(f"{patched} not found: run tools/mkdisc.py first")
-    want = json.loads((ROOT / "src/modules.json").read_text())["release_track_sha256"]
+    cfg = json.loads((ROOT / "src/modules.json").read_text())
+    want = cfg["release_track_sha256"]
     if sha(patched) != want:
         sys.exit(f"{patched.name}: not the expected build (sha256 {want}); no patch written")
-    out = dist / "ys-iii-enhanced-0.1.0.xdelta"
+    out = dist / "ys-iii-enhanced-0.2.0.xdelta"
     out.write_bytes(vcdiff.encode(base.read_bytes(), patched.read_bytes()))
     check = dist / "roundtrip.tmp"
     subprocess.run(["xdelta3", "-d", "-f", "-s", str(base), str(out), str(check)], check=True)
@@ -46,6 +48,18 @@ def main():
         sys.exit(1)
     for name in ("apply.py", "README.md", "LICENSE", "CREDITS.md"):
         shutil.copyfile(ROOT / name, dist / name)
+    manifest = dist / "disc.store.json"
+    if manifest.is_file():
+        want_m = cfg.get("manifest_sha256")
+        if want_m and sha(manifest) != want_m:
+            sys.exit(f"{manifest.name}: sha256 {sha(manifest)} differs from {want_m}")
+        shutil.copyfile(manifest, out.with_suffix(".store.json"))
+        shutil.copyfile(ROOT / "tools/edc130.py", dist / "edc130.py")
+        pre = dist / "pregen"
+        shutil.rmtree(pre, ignore_errors=True)
+        pre.mkdir(parents=True, exist_ok=True)
+        for p in sorted((ROOT / "tools/pregen").glob("*.py")):
+            shutil.copyfile(p, pre / p.name)
 
 
 if __name__ == "__main__":

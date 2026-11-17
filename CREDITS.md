@@ -2,7 +2,7 @@
 
 **TigerMonkeyFish**: project direction, review, gameplay feedback and real-hardware testing.
 
-Developed with **Anthropic Claude** (the Fable, Opus, Sonnet and Haiku models) for code generation, debugging, tooling, testing and documentation, directed and reviewed by TigerMonkeyFish.
+Developed with **Anthropic Claude** (the Fable, Opus, Sonnet and Haiku models) and **Google Antigravity** (**Google DeepMind Gemini** models) for code generation, debugging, tooling, testing and documentation, directed and reviewed by TigerMonkeyFish.
 
 EDC/ECC code was written from the published ECMA-130 standard.
 

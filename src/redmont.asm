@@ -41,6 +41,9 @@ SPLITN     = $4B4B
 PASSMODE   = $6BC4
 SPLITS     = $F3
 
+S0PCUT     = 0
+S0ARM      = 1
+S0WPG      = $4F
 TBANK      = $69        ; tables, at $6000 (MPR3) while drawing, at $8000 (MPR4) while uploading
 PHB        = $6A        ; mid phase p (1-7): bank PHB + p - 1, slot k at k * 32
 FBANK      = $71        ; far phases 2, 4, 6: at ((p >> 1) - 1) * $800 + k * 32
@@ -248,6 +251,8 @@ stood:	.db 0
 resv:	.db 0
 glide:	.db 0
 
+	.include "stubsyms.inc"
+	.include "scene0h.inc"
 idlelate:
 	rts
 
@@ -290,6 +295,12 @@ satbody:
 .go:
 	.endif
 	jsr satguard
+	lda s0st
+	beq .s0n
+	jsr s0sath
+	bcc .s0n
+	jmp satend
+.s0n:
 	stz sati
 	lda FRAMES
 	cmp pfr
@@ -582,7 +593,7 @@ irate:	lda ri,x
 .fast:	lda #21
 	sta rr,x
 	rts
-rtab:	.db 21, 18, 16, 14, 13, 12, 11   
+rtab:	.db 21, 18, 16, 14, 13, 12, 11
 glpal:	.db 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0
 
 ; ---------------------------------------------------------------- init (at the first area load)
@@ -591,6 +602,8 @@ OWNBATCLEAN = 1
 sigbanks:	.db TBANK, PHB, PHB + 1, PHB + 2, PHB + 3, PHB + 4, PHB + 5, PHB + 6, FBANK, SHBANK, P8BANK, 0
 
 modinit:
+	lda #1
+	sta s0ld
 	jsr c2load
 	jsr sigkarm
 	bcs .make
@@ -690,7 +703,11 @@ rowdraw:
 	lda OP_MIDMASK
 	cmp #$FF
 	beq .ok
-.gw:	jsr kokclr
+.gw:	lda ROWCNT
+	cmp #15
+	bne .g15
+	jsr s0r15h
+.g15:	jsr kokclr
 	inc wgame
 	rts
 .ok:	lda OP_MAWRLO           ; screen row: BAT row (MAWR / 64), buffers at 0 and 18
@@ -789,7 +806,7 @@ rowdraw:
 	cpx mainsp
 	beq .same
 	bbr1 <IRQMASK, .same
-	lda PASSMODE
+	lda PASSMODE            ; a pass with a mode sets the request itself
 	bne .same
 	lda mvd                 ; (standing, it draws like any other)
 	beq .same
@@ -1137,7 +1154,7 @@ c_x0:	ldx #0
 	eor #$80
 	sta ufar
 rowsend:	rts
-skipmark:	rts             ; (the first row of a skipped pass)
+skipmark:	rts             ; (a trace mark: the first row of a skipped pass)
 skipchk:	stz skip
 	ldx #8
 .k:	lda opkey_lo,x
@@ -1816,7 +1833,7 @@ SSEND      = 7
 setbegin:
 	lda #$FF                ; (doupload's standing shortcut: no images to rely on after this)
 	sta upx
-	lda FRAMES              ; (vblanks at its start and end; slots made are nm, nf)
+	lda FRAMES              ; (for the checks: vblanks at its start and end; slots made are nm, nf)
 	sta tset0
 	jsr curkey
 	lda t0
@@ -2432,7 +2449,10 @@ talloc:	ldx hand
 	clc
 	rts
 
-leave:	lda #$FF                ; (the same, on leaving the area)
+leave:	lda s0st
+	beq .s0
+	jsr s0lvh
+.s0:	lda #$FF                ; (the same, on leaving the area)
 	sta upx
 	lda dirty
 	beq .x
@@ -2538,7 +2558,7 @@ c2call:	bit c2ok                ; (X, Y and the carry pass through both ways; be
 	pla
 	tam #6
 .x:	rts
-c2ok:	.db 0                   ; $80: tinit1 has run since this bank was read (the loader reads C2BANK with it)
+c2ok:	.db 0                   ; $80: tinit1 has run since this bank was read (the loader reads C2BANK with it: the quarry makes it read both again)
 ; modinit: the second code bank's tables, once per load of this bank (the loader has read C2BANK with it). A kept
 c2load:	bit c2ok
 	bmi .x
@@ -2604,8 +2624,17 @@ rdon:	vsel 1
 	inx
 	inx
 	dey
+	beq .d
+	lda rdsplit + 2         ; ssrund's hold (offset 0): a pending interrupt in after every 4 words. The 16 reads held one off for
+	bne .rw
+	tya
+	and #3
 	bne .rw
 	plp
+	php
+	sei
+	bra .rw
+.d:	plp
 	rts
 
 dstk:	lda kk
@@ -2659,6 +2688,10 @@ gdst:	sta $8000,y
 upsave:	phy
 	tsx
 	stx mainsp
+	lda s0st
+	beq .s0
+	jsr s0idleh
+.s0:
 	lda <$55
 	bpl .r
 	lda dirty
@@ -3966,5 +3999,18 @@ batrs:	sta t1                  ; (t1:t0 from A and t0: the first word, at column
 	rts
 c2end:
 	.if (c2end > TMAP)
+	.fail
+	.endif
+
+	.bank 3
+	.org $C000
+	jmp s0r15               ; (the loader's check: a JMP first; cold3's entries: X = 0, 3, 6, 9)
+	jmp s0sat
+	jmp s0idle
+	jmp s0leave
+	.include "scene0c.inc"
+	.include "scene0pools.inc"
+s0end:
+	.if (s0end > $E000)
 	.fail
 	.endif

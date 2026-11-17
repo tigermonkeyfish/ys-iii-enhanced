@@ -1,39 +1,46 @@
 ; The stub, in two runs of all-$FF bytes on the disc: run 1 $46BA-$47FF (data sector 2 byte $6BA), run 2 $5F47-$5FFF (sector 452 byte $747).
 ; Both copies of the data layout are patched.
 ;
-; Without the System Card's RAM the patch does not run: bootchk stops with a message.
+; Without the required card RAM the patch does not run: bootchk stops with a message.
 ;
 ; The module's jump table, at $A000 + 3k: 0 row (carry set: nothing written), 1 satbody, 2 modinit (A = dgen), 3 idlework, 4 idlelate, 5 lateup, 6 leave.
-
 ROWDRAW  = $6CD8
 ROWCNT   = $6CCF
 FRAMES   = $2241
 TIMER    = $0C00
 CD_READ  = $E009        ; System Card: cd_read (args in zero page $F8-$FF)
-HALTSEC  = 158          ; the no-card message's sectors (src/syscard_halt.asm), and the stub bank's image
-WIDE     = $68          ; the RAM bank bootchk tests
-SBANK    = $7D          ; the stub bank (card RAM): the halt slot's MODSECS sectors, the stub's part at $0400 of it
-SBORG    = $C400        ; where that part runs (MPR6); mkdisc places it at byte $400 of HALTSEC
-MODSECS  = 4            ; the module: 4 sectors, one 8 KB bank at $A000
+HALTSEC  = 158
+WIDE     = $68
+SBANK    = $7D
+SBORG    = $C400
+MODSECS  = 4
 BIAS     = 64
 
 ; the stub bank's entries (JMP table at SBORG + 3k; xcall takes the low byte)
 XW       = 0            ; the main loop's wait: carry clear, return now (a pass started); carry set, wait until FRAMES leaves t0
 XG       = 3
 XP       = 6
-XA       = 9            ; (unused)
 XL       = 12           ; the area loader's body (X: the module's directory index)
+XO       = 18           ; sbobj per-pass update (+ ex_sprclr)
+XS       = 21           ; sbobj per-slot coord offset + Dulan spin frame override
+XR       = 24           ; sbobj Part B restore/sync on 17->18 handoff (qho)
+XE       = 27           ; sbobj Scene 17 entry backup (dpass)
 
 	.bank 0
 	.org $46BA
 
-; ---------------------------------------------------------------- variables
+; ---------------------------------------------------------------- variables (run 1: survive block 14 reloads)
 curmod:	.db 0                   ; the active module's code bank, 0 none
-lastmod:	.db 0                   ; the module that ran last
-sbok:	.db 0                   ; the stub bank holds its part (read at an area load; a module's data can overwrite it)
+lastmod:	.db 0                   ; the module that ran last: another one means the shared data banks are not its own
+sbok:	.db 0                   ; the stub bank holds its part (read at an area load when a module's data overwrote it: WIDEMOD)
 hf:	.db 0
+prev:	.db 0
+BPAD     = 26
+bline:	.db 0
+bbxr:	.db 0, 0
+bstate:	.db 0
 
-; ---------------------------------------------------------------- the directory (written by tools/mkdisc.py)
+; ---------------------------------------------------------------- the directory (written by mkdisc: src/modules.json)
 	.include "directory.inc"
 
 ; ---------------------------------------------------------------- the boot test: in the halt slot
@@ -41,7 +48,7 @@ bootchk:	lda #HALTSEC
 	jsr rdm
 	bne bootchk
 	jmp $A000
-dgen     = bootchk      ; data generation, given to modinit: a hint; the module proves it by a byte signature
+dgen     = bootchk      ; data generation, given to modinit: a hint; each module proves it by a byte signature
 t0       = bootchk + 1  ; FRAMES at this pass's row 0 (without the timing model), or the frame waitfix waits out
 ts       = bootchk + 2
 hs       = bootchk + 3
@@ -49,7 +56,7 @@ wi       = bootchk + 4  ; non-zero: XW asks waitfix for the module's idle work (
 tr0      = bootchk + 5
 tl       = bootchk + 6  ; ... as its last row returned
 nr       = bootchk + 7  ; 0: a span of the module's rows to count (row 0 to tl); bit 7: counted already
-t0ok     = bootchk + 8  ; (waitfix without the stub bank) t0 holds this pass's frame
+t0ok     = bootchk + 8  ; (waitfix without the stub bank, the quarry's) t0 holds this pass's frame
 te       = bootchk + 9
 
 rdm:	phx
@@ -65,7 +72,7 @@ rdm:	phx
 	sta <$FB
 	jsr CD_READ
 	plx
-rchk:	cmp #0
+rchk:	tay                     ; (Z from A in one byte: no caller of rdm keeps Y; run 1 holds bandirq)
 	bne .x
 	lda $A000
 	cmp #$4C
@@ -76,7 +83,10 @@ leave:	lda curmod
 	beq .s
 	lda #$12
 	jsr mcall
-	stz curmod
+	lda prev
+	stz prev
+	sta curmod
+	bra leave
 .s:
 .x:	rts
 
@@ -112,6 +122,9 @@ areaload:	cmp #16
 	sta curmod
 .none:	pla
 	tam #5
+	pla                     ; (the block: every row of it, down to the first, which is in charge)
+	pha
+	bra .f
 .out:	pla
 	plx
 	bra .orig
@@ -130,7 +143,7 @@ mcj:	jsr $A000
 	rts
 
 ; ---------------------------------------------------------------- the stub bank's entry A, MPR6 kept
-; Z set on return: the stub bank is not there (a module's data overwrote it), nothing ran, the carry as it came; else Z
+; Z set on return: the stub bank is not there (the quarry's data overwrote it), nothing ran, the carry as it came; else Z
 ; clear (the bank number pulled) and the carry as the entry left it. X and Y as the entry leaves them (it keeps them).
 xcall:	sta .j + 1
 	lda sbok
@@ -156,7 +169,7 @@ allocstub:	cmp #$78
 .x:	lda $40E4
 	rts
 
-; ---------------------------------------------------------------- the waits
+; ---------------------------------------------------------------- the waits (called from block 14's hooks)
 waitfix:	lda t0ok
 	beq .idle
 	stz t0ok
@@ -178,15 +191,35 @@ waitfix:	lda t0ok
 	lda #$F
 	jmp mcall
 
-rcrhook:	pha
-	lda $4B4B
-	beq .t
-	lda TIMER
-	sta hs
-	lda FRAMES
-	sta hf
-.t:	pla
-	jmp $4B40
+
+bandirq:	lda $4B4B
+	beq .s0
+	jmp bandn
+.s0:	jsr $4B40
+	lda bline
+	sta bstate
+	beq .x
+	st0 #6
+	sta $0002
+	st2 #0
+.x:	rts
+band:	stz bstate
+	ldx #BPAD
+.bp:	dex
+	bne .bp                 ; Geargrafx (line 103 for RCR $A7 in 388 of 388 frames): a knife edge on any other latch point
+	lda $4AE0
+	and #1
+	tax
+	st0 #7
+	lda bbxr,x
+	sta $0002
+	st2 #0
+	st0 #6
+	st1 #$D7
+	st2 #0
+	rts
+
+satskip:	.db 0
 end1:
 
 	.org $5F47
@@ -223,32 +256,20 @@ satwait:	bbr1 <$B1, .out
 .w:	bbs1 <$B1, .w
 .out:	rts
 
-gwait:	lda FRAMES
-	pha
-	sec
-	lda curmod
-	beq .g
-	phx
-	lda #XG
-	jsr xcall
-	plx
-.g:	pla
-	bcs .x
-	dec a
-.x:	rts
 
 satstub:	lda curmod
 	beq .req
 	rmb1 <$B1               ; no latch before the DVSSR write
 	lda #3
 	jsr mcall
-	lda #$13                ; DVSSR
+	lsr satskip
+	bcs .sk
+	lda #$13                ; DVSSR, as ex_sprdma selects it (register select copy $F7)
 	sta <$F7
 	sta $0000
 	ldy $2215
 	ldx #16
-.chk:	lda $1403
-	and #$02
+.chk:	tst #$02, $1403
 	beq .go
 	cli                     ; (taken after the instruction that follows CLI)
 	nop
@@ -259,10 +280,34 @@ satstub:	lda curmod
 	stx $0002               ; the DMA runs at the first vblank after this write ...
 	sty $0003
 	smb1 <$B1
-	cly
+.sk:	cly
 	rts
 .req:	jmp $E09F
 
+mhook:	lda curmod
+	beq .o
+	lda #$18
+	jmp mcall
+.o:	inc $339F
+	rts
+
+
+; ---------------------------------------------------------------- per-slot / per-pass sprite smoothing dispatch (run 2: calls SBANK)
+objpass:	pha
+	lda #XO
+	jsr xcall
+	pla
+	jmp $E0AE
+objslot:	lda #XS
+	jsr xcall
+sfr	= * + 1
+	lda #0
+	rts
+
+bandn:	lda bstate
+	beq .g
+	jmp band
+.g:	jmp $4B40
 end2:
 
 	.org $5FFF
@@ -276,170 +321,81 @@ rowgame:	.db 0
 	jmp xa
 	jmp xl
 	jmp sbgo
-p0:	.db 0                   ; FRAMES as the pass started
-pf:	.db 0                   ; non-zero: a pass starts at frame pp (debt BIAS): the stub waited for that vblank (XW's wait, satwait's)
-pp:	.db 0
-debt:	.db 0
-now:	.db 0
+	jmp sbobj_pass
+	jmp sbobj_slot
+	jmp sb_sync
+	jmp sb_enter17
 tmp:	.db 0
-spn:	.db 0
 
-tnow:	lda TIMER
-	and #$7F
-	sta now
-	lda pf
-	beq .x
-	lda FRAMES
-	sec
-	sbc pp
-	bmi .x                  ; (not yet: still before that vblank)
-	lda pp
-	sta p0
-	stz pf
-	lda #BIAS
-	sta debt
-.x:	rts
-el:	and #$7F
-	sec
-	sbc now
-	bcs .x
-	adc #116
-.x:	rts
-md:	sec
-	sbc tmp
-	bcs .x
-	adc #116
-.x:	rts
-
-HK       = 41
-HF       = 76
-pos:	lda hf
-	cmp FRAMES
-	beq .t
-	inc a
-	cmp FRAMES
-	bne .st
-	lda hs
-	jsr el
-	sec
-	sbc #HK
-	bcs .x
-	cla                     ; (not past it yet: 0)
-	sec
-.x:	rts
-.t:	lda hs
-	jsr el
-	clc
-	adc #HF
-	sec
-	rts
-.st:	cla
-	clc
-	rts
-
-; The module's rows since they were last counted go to the debt (nr bit 7: none)
-HV       = 40
-HD       = 1
-rows:	lda nr
-	bmi .x
-	lda tl
-	and #$7F
-	sta tmp
-	lda tr0
-	and #$7F
-	pha
-	jsr md
-	sta spn
-	lda hs
-	and #$7F
-	sec
-	sbc #HV
-	bcs .v
-	adc #116
-.v:	sta tmp
+sbgo:	pha
+	phx
+	lda #$A0
+	sta .zt + 4
+	ldx #$20
+.zt:	tai zz, $A000, $0100
+	inc .zt + 4
+	dex
+	bne .zt
+	plx
 	pla
-	jsr md                  ; row 0 to the vblank
-	cmp spn
-	bcs .c                  ; (the vblank was not inside; nor, with a stale stamp, any we know of)
-	lda hf
-	inc a
-	cmp FRAMES
-	bne .c
-	lda spn
-	sec
-	sbc #HD
-	bcs .s
-	cla
-.s:	sta spn
-.c:	lda rowgame
-	beq .n
-	lda #0
-	bra .r
-.n:	lda ROWCNT
-	cmp #16
-	bcc .r
-	lda #16
-.r:	sta nr
-	lsr a
-	lsr a
-	sta tmp
-	lda nr
-	asl a
-	adc tmp                 ; (carry clear: nr < 128)
-	eor #$FF
-	sec
-	adc spn
-	clc
-	adc debt
-	sta debt
-	lda #$FF
-	sta nr
-.x:	rts
-
-sbgo:	tai zz, $A000, $2000
 	jmp $20F8
 zz:	.dw 0
 
-; The area loader's body (from areaload, X = the module's directory index; MPR5 free): its banks from disc the first time (or
-; after a module's data overwrote it), MPR5 its code bank, dgen moved on when it is not the module that ran last. Carry set: a read failed.
+; The area loader's body (from areaload, X = the module's directory row; MPR5 free): its banks from disc the first time (or
+; after a module that wrote them), MPR5 its code bank, dgen moved on when it is not the module that ran last. Carry set: a read
+; failed. At every entry the rows whose code banks this module writes (dkill, from src/modules.json's banks: mkdisc) are marked
+; to be read again, and the stub bank (dsbk) when its data reach SBANK; a module's rows (dsame: one per block) arrive together.
 dsec:
-	.include "dirsec.inc"     ; (mkdisc: each module's first sector)
-xl:	lda dl,x
+	.include "dirsec.inc"
+dmark:	sta tmp                 ; dl = Y for every row whose bit is set in A
+	phx
+	clx
+.l:	lsr tmp
+	bcc .n
+	tya
+	sta dl,x
+.n:	inx
+	cpx #NMOD
+	bne .l
+	plx
+	rts
+xl:
+	jsr sb_sync
+	lda dl,x
 	bne .in
 	cpx #D2MOD              ; the module with a cold bank (its code at MPR6 while it runs): that bank first, then its own; dl only when both arrived
 	bne .one
+	.if D3BANK                ; (with a second cold bank, mkdisc "bank3" at D2SEC + 4: both in one read of 8 sectors, rd8)
+	jsr rd8
+	.else
 	lda #D2BANK
 	tam #5
 	lda #D2SEC
 	jsr rdm
+	.endif
 	bne .no
 .one:	lda dbank,x
 	tam #5
 	lda dsec,x
 	jsr rdm
 	bne .no
-	inc dl,x
-.in:	lda dbank,x
+	lda dsame,x             ; (every row of this module)
+	ldy #1
+	jsr dmark
+.in:	lda dkill,x             ; the rows whose code this module's banks overwrite: read again at their next entry
+	cly
+	jsr dmark
+	lda dsbk,x
+	beq .nw
+	stz sbok                ; (its data reach the stub bank: read again by leave at the next area load)
+.nw:	lda dbank,x
 	tam #5
-	cmp #WIDE               
-	bne .nw
-	phx
-	ldx #NMOD - 1
-.c:	stz dl,x
-	dex
-	bpl .c
-	plx
-	inc dl,x                ; (not itself)
-	stz sbok
-.nw:	cmp lastmod
+	cmp lastmod
 	beq .same
 	sta lastmod
 	inc dgen
-.same:	lda #BIAS
-	sta debt
+.same:
 	stz wi                  ; (bootchk's byte as the boot left it)
-	lda FRAMES
-	sta p0
 	lda #$FF
 	sta nr
 	clc
@@ -447,103 +403,75 @@ xl:	lda dl,x
 .no:	sec
 	rts
 
-macc:	lda mcj + 1
-	cmp #3
-	beq .c
-	cmp #$15
+xw:
+xg:
+xp:
+xa:	rts
+	.if D3BANK
+rd8:	phx
+	tma #3
+	pha
+	tma #4
+	pha
+	lda #D2BANK
+	tam #3
+	lda #D3BANK
+	tam #4
+	.if D4BANK                ; (a third cold bank, mkdisc "bank4" at D3SEC + 4: the three in one read of 12 sectors; MPR5 is the loader's to use)
+	lda #D4BANK
+	tam #5
+	.endif
+	lda #D2SEC
+	sta <$FE
+	stz <$FC
+	stz <$FD
+	lda #1
+	sta <$FF
+	.if D4BANK
+	lda #3 * MODSECS
+	.else
+	lda #2 * MODSECS
+	.endif
+	sta <$F8
+	stz <$FA
+	lda #$60
+	sta <$FB
+	jsr CD_READ
+	cmp #0
 	bne .x
-.c:	lda te
-	and #$7F
-	sta tmp
-	lda ts
-	and #$7F
-	jsr md
-	clc
-	adc debt
-	sta debt
-.x:	lda #$FF
-	sta mcj + 1
+	lda $6000
+	cmp #$4C
+	bne .x
+	lda $8000
+	cmp #$4C
+	.if D4BANK
+	bne .x
+	lda $A000
+	cmp #$4C
+	.endif
+.x:	php                     ; (the banks and X back; Z as compared)
+	pla
+	sta <$FA                ; (a scratch byte of the call's own arguments)
+	pla
+	tam #4
+	pla
+	tam #3
+	plx
+	lda <$FA
+	pha
+	plp
 	rts
-xa:	rts                     ; (entry kept: no caller)
-
-xp:	jsr tnow
-	jsr pos
-	adc #BIAS - 1           ; (fresh: pos + BIAS; stale: BIAS - 1)
-	sta debt
-	lda FRAMES
-	sta p0
-	stz pf
-	lda #$FF
-	sta nr
-	rts
-
-xw:	jsr tnow
-	jsr rows
-	jsr macc
-	lda FRAMES
-	sec
-	sbc p0
-	beq .idle
-	dec a
-	bne .game
-	jsr pos
-	bcc .game
-	adc #BIAS - 1
-	cmp debt
-	bcs .game
-	lda #$F
-	jsr mcall
-	jsr xp
-	bbr1 <$B1, .l
-	lda FRAMES
-	inc a
-	sta pp
-	lda #1
-	sta pf
-.l:	lda #$FF                ; (the late entry's time is not the pass's)
-	sta mcj + 1
-	clc
-	rts
-.idle:	jsr pos
-	sbc #117 - BIAS
-	bcc .i                  ; 117 steps): then that one first (stale: pos 0, carry clear: never)
-	cmp debt
-	bcc .i
-	jsr $4B6D
-.i:	lda #1                  ; the module's idle work (FRAMES sampled first): waitfix calls it (wi)
-	sta wi
-	lda p0
-	bra .w
-.game:	lda FRAMES
-.w:	sta t0
-	inc a
-	sta pp
-	lda #1
-	sta pf
-	sec
-	rts
-
-xg:	jsr tnow
-	jsr rows
-	jsr macc
-	lda FRAMES
-	clc
-	sbc p0                  ; FRAMES - p0 - 1: 0 when one vblank went by in the pass
-	bne .s
-	jsr pos
-	bcc .s
-	adc #BIAS - 1
-	cmp debt
-	bcs .s
-	jsr xp                  ; the module made this wait late: it ends now, a pass starts
-	clc
-	rts
-.s:	lda #BIAS               ; it waits: from the coming vblank nothing of ours is behind
-	sta debt
-	lda FRAMES
-	inc a
-	sta p0
-	stz pf
-	sec
-	rts
+	.endif
+	.include "sbobj.inc"
 send:
+	.if (send > $C6D0)
+	.fail "SBPART overflow"
+	.endif
+
+	.bank 2
+	.org $C800
+	.include "sbobj_b.inc"
+send2:
+	.if (send2 > $CC00)
+	.fail "SBPART2 overflow"
+	.endif

@@ -1,7 +1,15 @@
 {
  "_comment": "Hashes and offsets only. baseline_sha256: the untouched data track (INDEX 01 onward of Track 02). release_track_sha256: the whole patched Track 02 file. hook_sites: sector of the first copy of the data layout (the second copy is +12288), byte offset in the sector's 2048 user bytes, length changed, SHA-256 prefix of the 16 original bytes there.",
  "baseline_sha256": "b0117ad34e70b0c9965884e94c7de00302d3aa728697d630e5602617b97d0bb5",
- "release_track_sha256": "31b5eecea78e23c84dab5ff8beb7860fe299565a1bb273d3831776e724f366c6",
+ "release_track_sha256": "b0bcce31177c8a648c43f04b50b95db35cec79757c76f5e6e3f9a18cb274f2ff",
+ "store_track_sha256": "c0a2e1b2ab71197f8715f1e5f79fef826c22b81a2e8dc24609c198473c6a116d",
+ "manifest_sha256": "1b442ee2d384caca9d9df82af3434093d3a2b2670a399a561aabf48fdce8e6e6",
+ "free_runs": {
+  "pregen_store": {
+   "sector": 10562,
+   "count": 1726
+  }
+ },
  "hook_sites": {
   "block_load": {
    "sector": 2,
@@ -39,6 +47,18 @@
    "length": 3,
    "sha256_16": "506af90870c1"
   },
+  "satb_top": {
+   "sector": 450,
+   "offset": 1081,
+   "length": 3,
+   "sha256_16": "859f49a81324a9c6"
+  },
+  "obj_emit": {
+   "sector": 450,
+   "offset": 1269,
+   "length": 3,
+   "sha256_16": "7357926799183045"
+  },
   "ipl_exec": {
    "sector": 1,
    "offset": 6,
@@ -55,7 +75,260 @@
    "sector": 242,
    "count": 4,
    "bank2": "7C",
-   "sector2": 251
+   "sector2": 250,
+   "bank3": "7B",
+   "sector3": 254,
+   "bands": true,
+   "data_banks": [
+    "69",
+    "6A",
+    "6B",
+    "6C",
+    "6D",
+    "6E",
+    "6F",
+    "70",
+    "71",
+    "72",
+    "73",
+    "74",
+    "75",
+    "76",
+    "77",
+    "78",
+    "79",
+    "7A"
+   ]
+  },
+  {
+   "name": "quarry",
+   "source": "src/quarry.asm",
+   "block": 24,
+   "bank": "68",
+   "sector": 213,
+   "count": 4,
+   "chunk": 439,
+   "chunk_bank": "79",
+   "chunks_checked": true,
+   "preload": [
+    "mine"
+   ],
+   "chunk2": 438,
+   "chunk3": 440,
+   "chunk4": 442,
+   "chunk5": 444,
+   "chunk6": 446,
+   "chunk7": 448,
+   "data_banks": [
+    "69",
+    "6A",
+    "6B",
+    "6C",
+    "6D",
+    "6E",
+    "6F",
+    "70",
+    "71",
+    "72",
+    "73",
+    "74",
+    "75",
+    "76",
+    "77",
+    "78",
+    "79",
+    "7A",
+    "7B",
+    "7C",
+    "7F"
+   ]
+  },
+  {
+   "name": "shaft",
+   "source": "src/shaft.asm",
+   "block": 26,
+   "bank": "7F",
+   "sector": 246,
+   "count": 4,
+   "handoff2": {
+    "to": "mine",
+    "scenes": [
+     25,
+     30
+    ]
+   },
+   "data_banks": [
+    "6B",
+    "6C",
+    "6D",
+    "6E",
+    "6F",
+    "70",
+    "71",
+    "72",
+    "73"
+   ]
+  },
+  {
+   "name": "mine",
+   "source": "src/mine.asm",
+   "block": [
+    24,
+    26
+   ],
+   "bank": "7E",
+   "sector": 222,
+   "count": 4,
+   "handoff": {
+    "from": "quarry",
+    "scenes": [
+     18,
+     20
+    ]
+   },
+   "data_banks": [
+    "69",
+    "6B",
+    "6C",
+    "6D",
+    "6E",
+    "6F",
+    "70",
+    "71",
+    "72",
+    "73",
+    "74",
+    "75",
+    "76"
+   ]
+  },
+  {
+   "name": "shaft19card",
+   "source": "src/shaft19.asm",
+   "block": 24,
+   "bank": "73",
+   "set": [
+    "CARDMOD=1"
+   ],
+   "card": {
+    "sector": 12264,
+    "addr": 0,
+    "banks": [
+     [
+      "0",
+      "73",
+      "CMB0"
+     ],
+     [
+      "2",
+      "74",
+      "CB"
+     ],
+     [
+      "3",
+      "75",
+      "CB3"
+     ],
+     [
+      "4",
+      "76",
+      "CB4"
+     ],
+     [
+      "6",
+      "69",
+      "CB6",
+      "setup:69"
+     ],
+     [
+      "5",
+      "6E",
+      "CB5",
+      "setup:6E"
+     ]
+    ]
+   },
+   "data_banks": [
+    "69",
+    "6B",
+    "6C",
+    "6D",
+    "6E",
+    "6F",
+    "70",
+    "71",
+    "72"
+   ],
+   "ram_sites": {
+    "mid_a": {
+     "sector": 454,
+     "offset": 1283,
+     "length": 3,
+     "sha256_16": "915ff130c6b4"
+    },
+    "mid_b": {
+     "sector": 454,
+     "offset": 1289,
+     "length": 2,
+     "sha256_16": "b4cfbb70b08d"
+    },
+    "stepper": {
+     "sector": 780,
+     "offset": 568,
+     "length": 5,
+     "sha256_16": "ee743c4e680a"
+    },
+    "sat_fill": {
+     "sector": 450,
+     "offset": 1114,
+     "length": 2,
+     "sha256_16": "fc0be127036a"
+    },
+    "hud_tail": {
+     "sector": 450,
+     "offset": 846,
+     "length": 9,
+     "sha256_16": "0816f90d8332"
+    },
+    "hud_call": {
+     "sector": 450,
+     "offset": 762,
+     "length": 19,
+     "sha256_16": "4a42bafa5946"
+    }
+   },
+   "site_sums": {
+    "mid_a": [
+     "cmid",
+     0,
+     3
+    ],
+    "mid_b": [
+     "cmid",
+     2,
+     2
+    ],
+    "stepper": [
+     "cstp",
+     0,
+     5
+    ],
+    "sat_fill": [
+     "csf",
+     0,
+     2
+    ],
+    "hud_tail": [
+     "chud",
+     0,
+     9
+    ],
+    "hud_call": [
+     "chud2",
+     0,
+     16
+    ]
+   }
   }
  ]
 }
